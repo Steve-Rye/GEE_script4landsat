@@ -158,10 +158,14 @@ exports.calculateNDVIStats = function(params) {
     }
   };
   
+  // 获取研究区域名称
+  var areaName = ee.String(table.get('system:id')).getInfo().split('/').pop();
+  print('区域名称:', areaName);
+  
   // 导出GeoTIFF
   Export.image.toDrive({
-    image: meanNDVI,
-    description: 'NDVI_mean_' + params.startDate + '_' + params.endDate,
+    image: meanNDVI.float(),
+    description: areaName + '_NDVI_mean_' + params.startDate + '_' + params.endDate,
     folder: params.outputPath,
     region: params.geometry,
     scale: 30,
@@ -188,7 +192,7 @@ exports.calculateNDVIStats = function(params) {
 };
 
 // 使用示例
-var aoi = ee.Geometry.Rectangle([116.0, 39.8, 116.5, 40.0]); // 北京市部分区域
+var aoi = table; // 用户自定义研究区域
 
 var params = {
   geometry: aoi,
