@@ -1,15 +1,15 @@
 /**
  * @fileoverview 基于Landsat卫星数据的NDVI时间序列分析工具
- * 
+ *
  * 本模块提供了一套完整的工具，用于计算特定研究区域内的NDVI（归一化植被指数）时间序列均值。
  * 支持Landsat 4/5/7/8/9卫星数据的处理，包含云掩膜、异常值处理等功能。
- * 
+ *
  * 参考文献：
  * [1] Rouse Jr, J., et al. "Monitoring vegetation systems in the Great Plains with ERTS." NASA special publication 351 (1974): 309.
  * [2] USGS. "Landsat 8-9 Collection 2 (C2) Level 2 Science Product Guide." (2022).
- * [3] Zhu, Zhe, and Curtis E. Woodcock. "Object-based cloud and cloud shadow detection in Landsat imagery." 
+ * [3] Zhu, Zhe, and Curtis E. Woodcock. "Object-based cloud and cloud shadow detection in Landsat imagery."
  *     Remote sensing of environment 118 (2012): 83-94.
- * 
+ *
  * NDVI值范围解释：
  * [-1.0, 0.1)  - 水体、建筑物、云层等非植被区域
  *  [0.1, 0.2)  - 裸露土壤或极稀疏植被
@@ -59,7 +59,7 @@ function maskClouds(image) {
  */
 function computeNDVI(image, satellite) {
   var bands = getBandNames(satellite);
-  
+
   // 计算NDVI
   var ndvi = image.expression(
     '(nir - red) / (nir + red)', {
@@ -67,10 +67,10 @@ function computeNDVI(image, satellite) {
       'red': image.select(bands.red).multiply(0.0000275).add(-0.2)
     }
   ).rename('NDVI');
-  
+
   // 限制NDVI值域在[-1,1]范围内
   ndvi = ndvi.where(ndvi.lt(-1), -1).where(ndvi.gt(1), 1);
-  
+
   return image.addBands(ndvi);
 }
 
@@ -90,7 +90,7 @@ function extractPathRows(collection) {
       'row': row
     });
   });
-  
+
   // 使用pathRow属性去重并提取唯一值
   return ee.FeatureCollection(features).distinct(['pathRow']).aggregate_array('pathRow');
 }
@@ -113,15 +113,15 @@ exports.calculateNDVIStats = function(params) {
   if (!SATELLITES[params.satelliteId]) {
     throw new Error('不支持的卫星类型: ' + params.satelliteId);
   }
-  
+
   // 获取影像集合
   var collection = ee.ImageCollection(SATELLITES[params.satelliteId].name)
     .filterDate(params.startDate, params.endDate)
     .filterBounds(params.geometry);
-  
+
   // 提取影像集合中的路径行信息
   var pathRows = extractPathRows(collection);
-  
+
   // 处理影像集合
   var processedCollection = collection
     .map(function(image) {
@@ -130,15 +130,15 @@ exports.calculateNDVIStats = function(params) {
     .map(function(image) {
       return computeNDVI(image, params.satelliteId);
     });
-  
+
   printInfo('发现的影像数量: ' + collection.size().getInfo());
   printInfo('有效处理的影像数量: ' + processedCollection.size().getInfo());
-  
+
   // 计算NDVI均值
   var meanNDVI = processedCollection
     .select('NDVI')
     .mean();
-  
+
   // 准备输出结果
   var stats = {
     imageCount: processedCollection.size(),
@@ -157,11 +157,11 @@ exports.calculateNDVIStats = function(params) {
       list: pathRows.getInfo()
     }
   };
-  
+
   // 获取研究区域名称
   var areaName = ee.String(table.get('system:id')).getInfo().split('/').pop();
   print('区域名称:', areaName);
-  
+
   // 导出GeoTIFF
   Export.image.toDrive({
     image: meanNDVI.float(),
@@ -172,22 +172,26 @@ exports.calculateNDVIStats = function(params) {
     maxPixels: 1e9,
     fileFormat: 'GeoTIFF'
   });
-  
+
   // 添加到地图显示
   Map.centerObject(params.geometry, 9);
   Map.addLayer(params.geometry, {color: 'red'}, '研究区域');
   Map.addLayer(meanNDVI.clip(params.geometry), {
     min: -1,
     max: 1,
-    palette: [
-      '#FFFFFF', // 水体/非植被 (-1.0 to 0.1)
-      '#CE7E45', // 裸土 (0.1 to 0.2)
-      '#DF923D', // 稀疏植被 (0.2 to 0.4)
-      '#88B053', // 中等植被 (0.4 to 0.6)
-      '#336622'  // 密集植被 (0.6 to 1.0)
+    palette: [ // 传统的 NDVI 绿-棕色配色方案
+      '#FFFFFF', // 非植被/水体 (White)
+      '#FDE9A7', // 裸土 (Light Yellow)
+      '#D9C893', // 稀疏植被 (Light Brown)
+      '#B5B080', // 稀疏-中等植被 (Brown)
+      '#91986C', // 中等植被 (Olive Green)
+      '#6D8059', // 中等-高密度植被 (Dark Olive Green)
+      '#4A6845', // 高密度植被 (Dark Green)
+      '#275032', // 极高密度植被 (Very Dark Green)
+      '#04381E'  // 最高密度植被 (Deep Forest Green)
     ]
   }, 'NDVI均值');
-  
+
   return ee.Dictionary(stats);
 };
 
