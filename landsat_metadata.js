@@ -9,6 +9,8 @@
  *   - 获取时间（北京时间）
  *   - 年份
  *   - 月份
+ *   - Path
+ *   - Row
  */
 
 // 选择研究区域
@@ -157,7 +159,7 @@ pathRowList.evaluate(function(result) {
 // 遍历集合中的每个图像并收集信息
 mergedCollection.evaluate(function(collection) {
   // 创建表头
-  var header = ['序号', '影像ID', '云量', '获取日期', '获取时间(UTC)', '获取时间(北京时间)', '年份', '月份'];
+  var header = ['序号', '影像ID', '云量', '获取日期', '获取时间(UTC)', '获取时间(北京时间)', '年份', '月份', 'Path', 'Row'];
   var tableData = [header];
   var featureList = [];
   
@@ -171,6 +173,8 @@ mergedCollection.evaluate(function(collection) {
     var sceneCenterTime = feature.properties.SCENE_CENTER_TIME;
     var beijingTime = calcBeijingTime(sceneCenterTime);
     var num = (index + 1).toString();
+    var path = feature.properties.WRS_PATH;
+    var row = feature.properties.WRS_ROW;
     
     // 提取年份和月份
     var dateParts = dateAcquired.split('-');
@@ -178,12 +182,12 @@ mergedCollection.evaluate(function(collection) {
     var month = dateParts[1];
     
     // 添加数据行
-    var row = [num, id, cloudCover, dateAcquired, sceneCenterTime, beijingTime, year, month];
-    tableData.push(row);
+    var row_data = [num, id, cloudCover, dateAcquired, sceneCenterTime, beijingTime, year, month, path, row];
+    tableData.push(row_data);
     
     // 更新列宽
-    row.forEach(function(cell, i) {
-      columnWidths[i] = Math.max(columnWidths[i], cell.length);
+    row_data.forEach(function(cell, i) {
+      columnWidths[i] = Math.max(columnWidths[i], String(cell).length);
     });
     
     // 创建用于导出的Feature
@@ -195,7 +199,9 @@ mergedCollection.evaluate(function(collection) {
       'scene_center_time_utc': sceneCenterTime,
       'scene_center_time_beijing': beijingTime,
       'year': year,
-      'month': month
+      'month': month,
+      'path': path,
+      'row': row
     }));
   });
   
@@ -212,7 +218,7 @@ mergedCollection.evaluate(function(collection) {
   
   tableData.forEach(function(row, rowIndex) {
     var formattedRow = row.map(function(cell, i) {
-      return cell + repeatStr(' ', columnWidths[i] - cell.length);
+      return String(cell) + repeatStr(' ', columnWidths[i] - String(cell).length);
     }).join(' | ');
     print('| ' + formattedRow + ' |');
     
@@ -237,7 +243,9 @@ mergedCollection.evaluate(function(collection) {
       'scene_center_time_utc',
       'scene_center_time_beijing',
       'year',
-      'month'
+      'month',
+      'path',
+      'row'
     ]
   });
 });
