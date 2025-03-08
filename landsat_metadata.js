@@ -289,14 +289,14 @@ mergedCollection.evaluate(function(collection) {
     selectors: [
       'number',
       'image_id',
-      'cloud_cover',
+      'path',
+      'row',
       'date_acquired',
       'scene_center_time_utc',
       'scene_center_time_beijing',
       'year',
       'month',
-      'path',
-      'row'
+      'cloud_cover'
     ]
   });
 });
