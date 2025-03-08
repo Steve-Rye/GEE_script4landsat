@@ -127,33 +127,84 @@ var mergedCollection = ee.ImageCollection(L4collection
 print('总影像数量:', mergedCollection.size());
 print('云量筛选范围:', cloud_min + '% - ' + cloud_max + '%');
 
-// 计算覆盖研究区所需的不同条带号影像
-var pathRowList = mergedCollection.map(function(image) {
+// 为每个卫星创建单独的路径行列表
+function createPathRowList(collection, satelliteName) {
+  return collection.map(function(image) {
+    return ee.Feature(null, {
+      'WRS_PATH': image.get('WRS_PATH'),
+      'WRS_ROW': image.get('WRS_ROW')
+    });
+  }).distinct(['WRS_PATH', 'WRS_ROW']);
+
+}
+
+var L4pathRowList = createPathRowList(L4collection, 'Landsat 4');
+var L5pathRowList = createPathRowList(L5collection, 'Landsat 5');
+var L7pathRowList = createPathRowList(L7collection, 'Landsat 7');
+var L8pathRowList = createPathRowList(L8collection, 'Landsat 8');
+var L9pathRowList = createPathRowList(L9collection, 'Landsat 9');
+
+// 创建分隔线函数
+function printSeparator() {
+  var separatorLine = repeatStr('-', 40);
+  print(separatorLine);
+}
+
+// 打印单个卫星的路径行信息
+function printSatelliteInfo(pathRowList, satelliteName) {
+  pathRowList.evaluate(function(result) {
+    if (result.features.length > 0) {
+      print('\n' + satelliteName + '覆盖研究区影像条带号信息:');
+      print('若要完全覆盖研究区，需要' + result.features.length + '张不同条带号的影像，条带号信息为：');
+  
+    printSeparator();
+      
+      // 打印每个Path/Row组合
+      result.features.forEach(function(feature) {
+        var path = feature.properties.WRS_PATH;
+        var row = feature.properties.WRS_ROW;
+        print('path=' + path + ',row=' + row);
+      });
+      
+      printSeparator();
+    }
+  });
+}
+
+// 打印每个卫星的路径行信息
+print('\n各卫星覆盖研究区影像条带号信息:');
+var separatorLine = repeatStr('=', 40);
+print(separatorLine);
+
+// 逐个打印每个卫星的信息
+printSatelliteInfo(L4pathRowList, 'Landsat 4');
+printSatelliteInfo(L5pathRowList, 'Landsat 5');
+printSatelliteInfo(L7pathRowList, 'Landsat 7');
+printSatelliteInfo(L8pathRowList, 'Landsat 8');
+printSatelliteInfo(L9pathRowList, 'Landsat 9');
+
+// 打印所有卫星的总体汇总信息
+var totalPathRowList = mergedCollection.map(function(image) {
   return ee.Feature(null, {
     'WRS_PATH': image.get('WRS_PATH'),
     'WRS_ROW': image.get('WRS_ROW')
   });
 }).distinct(['WRS_PATH', 'WRS_ROW']);
 
-// 评估并打印结果
-pathRowList.evaluate(function(result) {
-  var count = result.features.length;
+totalPathRowList.evaluate(function(result) {
+  print('\n总体覆盖研究区影像条带号汇总:');
+  print('所有卫星合计需要' + result.features.length + '张不同条带号的影像，条带号信息为：');
+  printSeparator();
   
-  print('\n覆盖研究区影像条带号信息:');
-  print('若要完全覆盖研究区，需要' + count + '张不同条带号的影像，条带号信息为：');
-  
-  // 创建分隔线
-  var separatorLine = repeatStr('-', 20);
-  print(separatorLine);
-  
-  // 打印每个Path/Row组合
-  result.features.forEach(function(feature) {
-    var path = feature.properties.WRS_PATH;
-    var row = feature.properties.WRS_ROW;
-    print('path=' + path + ',row=' + row);
+  // 按照Path和Row排序
+  result.features.sort(function(a, b) {
+    return a.properties.WRS_PATH !== b.properties.WRS_PATH ? 
+      a.properties.WRS_PATH - b.properties.WRS_PATH :
+      a.properties.WRS_ROW - b.properties.WRS_ROW;
+  }).forEach(function(feature) {
+    print('path=' + feature.properties.WRS_PATH + ',row=' + feature.properties.WRS_ROW);
   });
-  
-  print(separatorLine);
+  printSeparator();
 });
 
 // 遍历集合中的每个图像并收集信息
