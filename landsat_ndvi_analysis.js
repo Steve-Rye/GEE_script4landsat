@@ -1,7 +1,7 @@
 /**
  * @fileoverview 基于Landsat卫星数据的NDVI时间序列分析工具
  *
- * 本模块提供了一套完整的工具，用于计算特定研究区域内的NDVI（归一化植被指数）时间序列均值。
+ * 本模块提供了一套完整的工具，用于计算特定研究区域内的NDVI（归一化植被指数）时间序列统计值（均值或最大值）。
  * 支持Landsat 4/5/7/8/9卫星数据的处理，包含云掩膜、异常值处理等功能。
  *
  * 参考文献：
@@ -106,12 +106,19 @@ var printInfo = function(msg) { print('信息:', msg); };
  * @param {string} params.endDate - 结束日期 (YYYY-MM-DD)
  * @param {string} params.satelliteId - 卫星标识符
  * @param {string} params.outputPath - GDrive导出路径
+ * @param {string} params.statType - 统计类型 ('mean' 或 'max')
  * @return {ee.Dictionary} 统计结果
  */
 exports.calculateNDVIStats = function(params) {
   // 验证输入参数
   if (!SATELLITES[params.satelliteId]) {
     throw new Error('不支持的卫星类型: ' + params.satelliteId);
+  }
+
+  // 验证统计类型
+  var validTypes = ['mean', 'max'];
+  if (validTypes.indexOf(params.statType) === -1) {
+    throw new Error('不支持的统计类型: ' + params.statType + '。请使用 "mean" 或 "max"');
   }
 
   // 获取影像集合
@@ -134,20 +141,29 @@ exports.calculateNDVIStats = function(params) {
   printInfo('发现的影像数量: ' + collection.size().getInfo());
   printInfo('有效处理的影像数量: ' + processedCollection.size().getInfo());
 
-  // 计算NDVI均值
-  var meanNDVI = processedCollection
+  // 计算NDVI统计值（均值或最大值）
+  var statNDVI = processedCollection
     .select('NDVI')
-    .mean();
+    [params.statType]();
+  
+  // 获取统计类型的中文描述
+  var statTypeDesc = params.statType === 'mean' ? '均值' : '最大值';
 
   // 准备输出结果
   var stats = {
     imageCount: processedCollection.size(),
-    meanNDVI: meanNDVI.reduceRegion({
-      reducer: ee.Reducer.mean(),
+    ndviStats: statNDVI.reduceRegion({
+      reducer: params.statType === 'mean' ? 
+        ee.Reducer.mean() : 
+        ee.Reducer.max(),
       geometry: params.geometry,
       scale: 30,
       maxPixels: 1e9
     }),
+    statType: {
+      type: params.statType,
+      description: statTypeDesc
+    },
     temporalRange: {
       start: params.startDate,
       end: params.endDate
@@ -164,8 +180,8 @@ exports.calculateNDVIStats = function(params) {
 
   // 导出GeoTIFF
   Export.image.toDrive({
-    image: meanNDVI.float(),
-    description: areaName + '_NDVI_mean_' + params.startDate + '_' + params.endDate,
+    image: statNDVI.float(),
+    description: areaName + '_NDVI_' + params.statType + '_' + params.startDate + '_' + params.endDate,
     folder: params.outputPath,
     region: params.geometry,
     scale: 30,
@@ -176,7 +192,7 @@ exports.calculateNDVIStats = function(params) {
   // 添加到地图显示
   Map.centerObject(params.geometry, 9);
   Map.addLayer(params.geometry, {color: 'red'}, '研究区域');
-  Map.addLayer(meanNDVI.clip(params.geometry), {
+  Map.addLayer(statNDVI.clip(params.geometry), {
     min: -1,
     max: 1,
     palette: [ // 传统的 NDVI 绿-棕色配色方案
@@ -190,7 +206,7 @@ exports.calculateNDVIStats = function(params) {
       '#275032', // 极高密度植被 (Very Dark Green)
       '#04381E'  // 最高密度植被 (Deep Forest Green)
     ]
-  }, 'NDVI均值');
+  }, 'NDVI ' + statTypeDesc);
 
   return ee.Dictionary(stats);
 };
@@ -203,7 +219,8 @@ var params = {
   startDate: '2020-01-01',
   endDate: '2020-12-31',
   satelliteId: 'L8',
-  outputPath: 'NDVI_Results'
+  outputPath: 'NDVI_Results',
+  statType: 'mean' // 或使用 'max' 来计算最大值
 };
 
 var results = exports.calculateNDVIStats(params);
