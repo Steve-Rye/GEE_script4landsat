@@ -2,7 +2,7 @@
  * @fileoverview 基于 Landsat NDVI 最大值和像元二分模型计算 FVC (植被覆盖度)
  *
  * 本模块提供了一套完整的工具，用于计算特定研究区域内的 FVC (Fraction of Vegetation Cover)。
- * 支持多个时间段的计算，基于 NDVI 最大值合成以及像元二分模型进行计算。
+ * 支持多个时间段的计算，可选择基于 NDVI 最大值或均值，以及像元二分模型进行计算。
  * 本脚本是完全独立的实现，包含了所有必要的函数和工具。
  * 主要功能包括：
  * 1. 支持多个时间段的 FVC 计算
@@ -120,6 +120,7 @@ function calculateFVC(ndviImage, ndvi_soil, ndvi_veg) {
  * @param {ee.Geometry} params.geometry - 研究区域几何对象
  * @param {Array<Object>} params.timePeriods - 时间段列表，每个对象包含start和end
  * @param {string} params.satelliteId - 卫星标识符
+ * @param {string} [params.ndviType='max'] - NDVI计算方法 ('max' 或 'mean')
  * @param {boolean} [params.autoThreshold=false] - 是否自动计算NDVI阈值
  * @param {number} [params.ndvi_soil=0.2] - 土壤NDVI阈值（当autoThreshold为false时使用）
  * @param {number} [params.ndvi_veg=0.86] - 植被NDVI阈值（当autoThreshold为false时使用）
@@ -132,6 +133,12 @@ exports.calculateFVC = function(params) {
   }
 
   // 设置默认值
+  params.ndviType = params.ndviType || 'max';
+  
+  // 验证NDVI计算方法
+  if (params.ndviType !== 'max' && params.ndviType !== 'mean') {
+    throw new Error('不支持的NDVI计算方法: ' + params.ndviType + '。请使用 "max" 或 "mean"');
+  }
   params.autoThreshold = params.autoThreshold || false;
   params.ndvi_soil = params.ndvi_soil || 0.2;
   params.ndvi_veg = params.ndvi_veg || 0.86;
@@ -163,10 +170,16 @@ exports.calculateFVC = function(params) {
       return;
     }
 
-    // 2. 计算NDVI最大值
-    var ndviMax = collection
-      .select('NDVI')
-      .max();
+    // 2. 根据选择的方法计算NDVI
+    var ndviImage;
+    if (params.ndviType === 'max') {
+      ndviImage = collection.select('NDVI').max();
+      print('使用NDVI最大值合成');
+    } else {
+      ndviImage = collection.select('NDVI').mean();
+      print('使用NDVI均值合成');
+    }
+    print('NDVI计算方法:', params.ndviType);
 
     var ndvi_soil, ndvi_veg;
 
@@ -194,10 +207,10 @@ exports.calculateFVC = function(params) {
     }
 
     // 4. 计算FVC
-    var fvc = calculateFVC(ndviMax, ndvi_soil, ndvi_veg);
+    var fvc = calculateFVC(ndviImage, ndvi_soil, ndvi_veg);
 
     // 5. 导出结果
-    var exportDescription = areaName + '_FVC_' + period.start + '_' + period.end;
+    var exportDescription = areaName + '_FVC_' + params.ndviType.toUpperCase() + '_' + period.start + '_' + period.end;
     Export.image.toDrive({
       image: fvc.float(),
       description: exportDescription,
@@ -225,7 +238,7 @@ exports.calculateFVC = function(params) {
         '#275032',
         '#04381E'  // 100% 植被覆盖
       ]
-    }, 'FVC_' + period.start + '_' + period.end);
+    }, 'FVC_' + params.ndviType.toUpperCase() + '_' + period.start + '_' + period.end);
   });
 };
 
@@ -243,6 +256,7 @@ var params = {
   geometry: aoi,
   timePeriods: timePeriods,
   satelliteId: 'L8',
+  ndviType: 'max',      // 'max' 使用最大值，'mean' 使用均值
   autoThreshold: false,  // 是否自动计算阈值
   ndvi_soil: 0.2,       // 可选，默认值为 0.2
   ndvi_veg: 0.86,       // 可选，默认值为 0.86
