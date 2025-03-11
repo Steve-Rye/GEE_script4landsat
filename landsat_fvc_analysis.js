@@ -1,5 +1,5 @@
 /**
- * @fileoverview 基于 Landsat NDVI 最大值和像元二分模型计算 FVC (植被覆盖度)
+ * @fileoverview 基于 Landsat NDVI 和像元二分模型计算 FVC (植被覆盖度)
  *
  * 本模块提供了一套完整的工具，用于计算特定研究区域内的 FVC (Fraction of Vegetation Cover)。
  * 支持多个时间段的计算，可选择基于 NDVI 最大值或均值，以及像元二分模型进行计算。
@@ -119,7 +119,7 @@ function calculateFVC(ndviImage, ndvi_soil, ndvi_veg) {
  * @param {Object} params - 参数对象
  * @param {ee.Geometry} params.geometry - 研究区域几何对象
  * @param {Array<Object>} params.timePeriods - 时间段列表，每个对象包含start和end
- * @param {string} params.satelliteId - 卫星标识符
+ * @param {Array<string>} params.satelliteIds - 卫星标识符列表 ['L4', 'L5', 'L7', 'L8', 'L9']
  * @param {string} [params.ndviType='max'] - NDVI计算方法 ('max' 或 'mean')
  * @param {boolean} [params.autoThreshold=false] - 是否自动计算NDVI阈值
  * @param {number} [params.ndvi_soil=0.2] - 土壤NDVI阈值（当autoThreshold为false时使用）
@@ -127,11 +127,6 @@ function calculateFVC(ndviImage, ndvi_soil, ndvi_veg) {
  * @param {string} params.outputPath - GDrive导出路径
  */
 exports.calculateFVC = function(params) {
-  // 验证输入参数
-  if (!SATELLITES[params.satelliteId]) {
-    throw new Error('不支持的卫星类型: ' + params.satelliteId);
-  }
-
   // 设置默认值
   params.ndviType = params.ndviType || 'max';
   
@@ -142,6 +137,16 @@ exports.calculateFVC = function(params) {
   params.autoThreshold = params.autoThreshold || false;
   params.ndvi_soil = params.ndvi_soil || 0.2;
   params.ndvi_veg = params.ndvi_veg || 0.86;
+  params.satelliteIds = params.satelliteIds || ['L8'];  // 默认使用 Landsat 8
+
+  // 验证卫星列表
+  params.satelliteIds = params.satelliteIds.filter(function(satelliteId) {
+    if (!SATELLITES[satelliteId]) {
+      print('警告：不支持的卫星类型: ' + satelliteId + '，将被跳过');
+      return false;
+    }
+    return true;
+  });
 
   // 获取研究区域名称
   var areaName = ee.String(params.geometry.get('system:id')).getInfo().split('/').pop();
@@ -151,42 +156,57 @@ exports.calculateFVC = function(params) {
   params.timePeriods.forEach(function(period) {
     print('处理时间段:', period.start + ' 至 ' + period.end);
     
-    // 1. 获取影像集合并计算NDVI
-    var collection = ee.ImageCollection(SATELLITES[params.satelliteId].name)
-      .filterDate(period.start, period.end)
-      .filterBounds(params.geometry)
-      .map(function(image) {
-        return maskClouds(image);
-      })
-      .map(function(image) {
-        return computeNDVI(image, params.satelliteId);
-      });
+    // 合并所有可用卫星的影像集合
+    var combinedCollection = ee.ImageCollection([]);
+    var totalImages = 0;
 
-    print('发现的影像数量:', collection.size());
-    
-    // 检查是否有影像
-    if (collection.size().getInfo() === 0) {
-      print('警告：在时间段 ' + period.start + ' 至 ' + period.end + ' 内未找到影像');
+    params.satelliteIds.forEach(function(satelliteId) {
+      // 获取当前卫星的影像集合
+      var collection = ee.ImageCollection(SATELLITES[satelliteId].name)
+        .filterDate(period.start, period.end)
+        .filterBounds(params.geometry)
+        .map(function(image) {
+          return maskClouds(image);
+        })
+        .map(function(image) {
+          return computeNDVI(image, satelliteId);
+        });
+
+      var satelliteImages = collection.size().getInfo();
+      totalImages += satelliteImages;
+      print('卫星 ' + satelliteId + ' 发现的影像数量:', satelliteImages);
+
+      if (satelliteImages > 0) {
+        combinedCollection = combinedCollection.merge(collection);
+      }
+    });
+
+    print('时间段内所有卫星的总影像数量:', totalImages);
+
+    // 检查是否有任何影像
+    if (totalImages === 0) {
+      print('警告：在时间段 ' + period.start + ' 至 ' + period.end + ' 内未找到任何卫星影像');
       return;
     }
+    print('处理' + totalImages + '幅影像...');
 
-    // 2. 根据选择的方法计算NDVI
+    // 计算NDVI（最大值或均值）
     var ndviImage;
     if (params.ndviType === 'max') {
-      ndviImage = collection.select('NDVI').max();
+      ndviImage = combinedCollection.select('NDVI').max();
       print('使用NDVI最大值合成');
     } else {
-      ndviImage = collection.select('NDVI').mean();
+      ndviImage = combinedCollection.select('NDVI').mean();
       print('使用NDVI均值合成');
     }
     print('NDVI计算方法:', params.ndviType);
 
     var ndvi_soil, ndvi_veg;
 
-    // 3. 获取NDVI阈值
+    // 获取NDVI阈值
     if (params.autoThreshold) {
       // 自动计算阈值
-      var thresholds = calculateNDVIThresholds(ndviMax, params.geometry);
+      var thresholds = calculateNDVIThresholds(ndviImage, params.geometry);
       ndvi_soil = thresholds.ndvi_soil;
       ndvi_veg = thresholds.ndvi_veg;
 
@@ -206,12 +226,12 @@ exports.calculateFVC = function(params) {
       ndvi_veg = params.ndvi_veg;
     }
 
-    // 4. 计算FVC
+    // 计算FVC
     var fvc = calculateFVC(ndviImage, ndvi_soil, ndvi_veg);
 
-    // 5. 导出结果
+    // 导出结果
     var exportDescription = areaName + '_FVC_' + params.ndviType.toUpperCase() + '_' + period.start + '_' + period.end;
-    Export.image.toDrive({
+    var task = Export.image.toDrive({
       image: fvc.float(),
       description: exportDescription,
       folder: params.outputPath,
@@ -221,7 +241,9 @@ exports.calculateFVC = function(params) {
       fileFormat: 'GeoTIFF'
     });
 
-    // 6. 添加到地图显示
+    print('导出任务已创建:', exportDescription);
+
+    // 添加到地图显示
     Map.centerObject(params.geometry, 9);
     Map.addLayer(params.geometry, {color: 'red'}, '研究区域');
     Map.addLayer(fvc.clip(params.geometry), {
@@ -243,10 +265,9 @@ exports.calculateFVC = function(params) {
 };
 
 // 使用示例
-
+/*
 var aoi = table;  // 研究区域
 
-// 可添加多个时间序列
 var timePeriods = [
   {start: '2021-01-01', end: '2021-12-31'},
   {start: '2020-02-02', end: '2020-12-31'}
@@ -255,7 +276,7 @@ var timePeriods = [
 var params = {
   geometry: aoi,
   timePeriods: timePeriods,
-  satelliteId: 'L8',
+  satelliteIds: ['L4', 'L5', 'L7', 'L8', 'L9'],  // 检索所有支持的卫星
   ndviType: 'max',      // 'max' 使用最大值，'mean' 使用均值
   autoThreshold: false,  // 是否自动计算阈值
   ndvi_soil: 0.2,       // 可选，默认值为 0.2
@@ -264,3 +285,4 @@ var params = {
 };
 
 exports.calculateFVC(params);
+*/
