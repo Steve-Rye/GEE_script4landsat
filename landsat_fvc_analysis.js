@@ -264,8 +264,8 @@ exports.calculateFVC = function(params) {
   });
 };
 
-// 使用示例
-/*
+// 设置参数以运行FVC计算
+
 var aoi = table;  // 研究区域
 
 var timePeriods = [
@@ -285,4 +285,4 @@ var params = {
 };
 
 exports.calculateFVC(params);
-*/
+
