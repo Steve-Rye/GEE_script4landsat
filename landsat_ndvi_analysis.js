@@ -18,7 +18,7 @@ var SATELLITES = {
 var satelliteConfig = {
   'L9': true,  // Landsat 9
   'L8': true,  // Landsat 8
-  'L7': true,  // Landsat 7
+  'L7': false,  // Landsat 7
   'L5': true,  // Landsat 5
   'L4': true   // Landsat 4
 };
