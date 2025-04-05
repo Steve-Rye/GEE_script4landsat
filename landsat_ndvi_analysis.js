@@ -1,7 +1,7 @@
 /**
  * @fileoverview 基于Landsat卫星数据的NDVI时间序列分析工具
  *
- * 本模块提供了一套完整的工具，用于计算特定研究区域内的NDVI（归一化植被指数）时间序列统计值（均值或最大值）。
+ * 本模块提供了一套完整的工具，用于计算特定研究区域内的NDVI（归一化植被指数）时间序列统计值（均值、最大值、最小值或中值）。
  * 支持Landsat 4/5/7/8/9卫星数据的处理，包含云掩膜、异常值处理等功能，支持多时间段批量处理。
  */
 
@@ -30,7 +30,7 @@ var timePeriods = [
   {start: '2018-01-01', end: '2018-12-31'}
 ];
 
-// 选择统计方式：'mean' 或 'max'
+// 选择统计方式：'mean'(均值), 'max'(最大值), 'min'(最小值) 或 'median'(中值)
 var statType = 'mean';
 
 /**
@@ -53,11 +53,11 @@ function computeNDVI(image) {
   // 获取卫星ID并判断波段
   var spacecraftId = ee.String(image.get('SPACECRAFT_ID'));
   var isNewSatellite = spacecraftId.match('LANDSAT_[89]').length().gt(0);
-  
+
   // 根据卫星类型选择波段
   var nir = ee.String(ee.Algorithms.If(isNewSatellite, 'SR_B5', 'SR_B4'));
   var red = ee.String(ee.Algorithms.If(isNewSatellite, 'SR_B4', 'SR_B3'));
-  
+
   // 计算NDVI
   var ndvi = image.expression(
     '(nir - red) / (nir + red)', {
@@ -113,7 +113,7 @@ function processNDVI(startDate, endDate, geometry, outputPath) {
     var collection = ee.ImageCollection(SATELLITES[satellite].name)
       .filterDate(startDate, endDate)
       .filterBounds(geometry);
-    
+
     mergedCollection = mergedCollection.merge(collection);
   });
 
@@ -134,7 +134,7 @@ function processNDVI(startDate, endDate, geometry, outputPath) {
   // 格式化日期字符串
   var startDateFormatted = ee.String(startDate).replace('-', '').replace('-', '');
   var endDateFormatted = ee.String(endDate).replace('-', '').replace('-', '');
-  
+
   // 构建文件名
   var filename = ee.String(areaName)
     .cat('_NDVI_')
@@ -156,12 +156,18 @@ function processNDVI(startDate, endDate, geometry, outputPath) {
   });
 
   // 添加到地图显示
-  var displayName = startDate + '至' + endDate + ' NDVI ' + (statType === 'mean' ? '均值' : '最大值');
+  var statTypeDisplay = {
+    'mean': '均值',
+    'max': '最大值',
+    'min': '最小值',
+    'median': '中值'
+  };
+  var displayName = startDate + '至' + endDate + ' NDVI ' + statTypeDisplay[statType];
   Map.addLayer(statNDVI.clip(geometry), {
     min: -1,
     max: 1,
     palette: [
-      '#FFFFFF', '#FDE9A7', '#D9C893', '#B5B080', 
+      '#FFFFFF', '#FDE9A7', '#D9C893', '#B5B080',
       '#91986C', '#6D8059', '#4A6845', '#275032', '#04381E'
     ]
   }, displayName);
