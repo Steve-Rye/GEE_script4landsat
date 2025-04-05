@@ -163,7 +163,7 @@ function processNDVI(startDate, endDate, geometry, outputPath) {
     'median': '中值'
   };
   var displayName = startDate + '至' + endDate + ' NDVI ' + statTypeDisplay[statType];
-  Map.addLayer(statNDVI.clip(geometry), {
+  Map.addLayer(statNDVI, {
     min: -1,
     max: 1,
     palette: [
