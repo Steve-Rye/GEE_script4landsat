@@ -194,7 +194,6 @@ print('启用的卫星:', enabledSatellites);
 
 // 显示研究区域
 Map.centerObject(table);
-Map.addLayer(table, {color: 'red'}, '研究区域');
 
 // 处理所有时间段
 timePeriods.forEach(function(period) {
@@ -205,3 +204,6 @@ timePeriods.forEach(function(period) {
 });
 
 print('=== NDVI批量处理完成 ===');
+
+// 在最后添加研究区域边界（显示在最上层）
+Map.addLayer(table, {color: 'red'}, '研究区域');
