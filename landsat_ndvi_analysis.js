@@ -145,11 +145,14 @@ function processNDVI(startDate, endDate, geometry, outputPath) {
     .cat(endDateFormatted);
 
   // 导出GeoTIFF
+  // 创建外扩5公里的导出边界
+  var exportRegion = ee.FeatureCollection(geometry).geometry().buffer(5000);
+  
   Export.image.toDrive({
     image: statNDVI.float(),
     description: filename.getInfo(),
     folder: outputPath,
-    region: geometry,
+    region: exportRegion,  // 使用外扩5公里的区域作为导出边界
     scale: 30,
     maxPixels: 1e9,
     fileFormat: 'GeoTIFF'
