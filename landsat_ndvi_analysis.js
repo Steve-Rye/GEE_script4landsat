@@ -154,7 +154,7 @@ function processNDVI(startDate, endDate, geometry, outputPath) {
     folder: outputPath,
     region: exportRegion,  // 使用外扩5公里的区域作为导出边界
     scale: 30,
-    maxPixels: 1e9,
+    maxPixels: 1e13,
     fileFormat: 'GeoTIFF'
   });
 
